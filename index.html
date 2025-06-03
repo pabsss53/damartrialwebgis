@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kelompok 6 PS - WebGIS Client Only</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background-color: #111827;
+      color: #facc15;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header, footer {
+      background-color: #153107;
+      padding: 12px 20px;
+      font-weight: 700;
+      font-size: 1.3rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #title {
+      font-size: 1.6rem;
+    }
+
+    #map-container {
+      display: flex;
+      flex: 1;
+      flex-grow: 1;
+      height: 100%;
+      min-height: 0;
+    }
+
+    #sidebar {
+      width: 360px;
+      background-color: #031103;
+      padding: 20px;
+      overflow-y: auto;
+      transition: width 0.3s ease, padding 0.3s ease;
+    }
+
+    #sidebar.collapsed {
+      width: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #map {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      margin-top: 12px;
+    }
+
+    input[type="file"],
+    input[type="number"],
+    select {
+      width: 100%;
+      background-color: #374151;
+      border: none;
+      color: #facc15;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+
+    button {
+      background-color: #3b82f6;
+      border: none;
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      width: 100%;
+      margin-top: 12px;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: #2563eb;
+    }
+
+    button:disabled {
+      background-color: #6b7280;
+      cursor: not-allowed;
+    }
+
+    #legend {
+      margin-top: 15px;
+      font-size: 0.9rem;
+      background: #0a0213;
+      border-radius: 8px;
+      padding: 10px;
+      line-height: 1.4;
+    }
+
+    .legend-item {
+      margin-bottom: 6px;
+    }
+
+    .color-box {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    #output {
+      margin-top: 15px;
+      font-size: 0.9rem;
+      max-height: 120px;
+      overflow-y: auto;
+      background: #374151;
+      padding: 10px;
+      border-radius: 8px;
+      color: #d1d5db;
+    }
+
+    #hamburger-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: #facc15;
+      font-size: 24px;
+      line-height: 1;
+      padding: 0;
+    }
+
+    @media (max-width: 768px) {
+      #sidebar {
+        width: 100%;
+        position: absolute;
+        z-index: 1000;
+        height: calc(100vh - 96px);
+      }
+
+      #sidebar.collapsed {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
+    }
+  </style>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Turf.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+</head>
+<body>
+  <header>
+    <div id="title">KELOMPOK 6</div>
+    <button id="hamburger-btn" title="Toggle Tools Sidebar">&#9776;</button>
+  </header>
+
+  <div id="map-container">
+    <aside id="sidebar">
+      <h2>Geoprocessing Tools</h2>
+
+      <label for="file1">Upload GeoJSON 1:</label>
+      <input type="file" id="file1" accept=".geojson,.json" />
+
+      <label for="file2">Upload GeoJSON 2 (optional):</label>
+      <input type="file" id="file2" accept=".geojson,.json" />
+
+      <label for="buffer-distance">Buffer Distance (meters):</label>
+      <input type="number" id="buffer-distance" min="0" step="10" value="100" />
+
+      <button id="btn-buffer">Buffer GeoJSON 1</button>
+      <button id="btn-intersect">Intersect GeoJSON 1 &amp; 2</button>
+      <button id="btn-clip">Clip GeoJSON 1 by GeoJSON 2</button>
+      <button id="btn-spatialjoin">Spatial Join GeoJSON 1 &amp; 2</button>
+
+      <label for="enable-cursor-point" style="margin-top: 20px;">
+        <input type="checkbox" id="enable-cursor-point" />
+        Generate Point with Cursor
+      </label>
+
+      <button id="btn-export" disabled>Export Result GeoJSON</button>
+
+      <section id="legend">
+        <div class="legend-item"><span class="color-box" style="background: #ef4444"></span>GeoJSON 1</div>
+        <div class="legend-item"><span class="color-box" style="background: #3b82f6"></span>GeoJSON 2</div>
+        <div class="legend-item"><span class="color-box" style="background: #22c55e"></span>Result Analysis</div>
+      </section>
+
+      <div id="output">Status: Waiting for input...</div>
+    </aside>
+
+    <main id="map" role="region" aria-label="Map"></main>
+  </div>
+
+  <footer>
+    Sistem Koordinat: EPSG:4326 (WGS84) | Sumber Data: OpenStreetMap &amp; User Upload
+  </footer>
+
+  <script>
+    const map = L.map("map", { zoomControl: false }).setView([-2.548926, 118.0148634], 5);
+
+    const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    const satellite = L.tileLayer("https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+      maxZoom: 20,
+      subdomains: ["mt0", "mt1", "mt2", "mt3"],
+      attribution: "Google Satellite"
+    });
+
+    const baseLayers = {
+      OpenStreetMap: osm,
+      Satellite: satellite
+    };
+
+    const overlays = {};
+    const layerControl = L.control.layers(baseLayers, overlays).addTo(map);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    let geojsonLayer1 = null;
+    let geojsonLayer2 = null;
+    let resultLayer = null;
+
+    const style1 = { color: "#ef4444", weight: 2 };
+    const style2 = { color: "#3b82f6", weight: 2 };
+    const styleResult = { color: "#22c55e", weight: 2, fillOpacity: 0.3 };
+
+    function setStatus(msg) {
+      document.getElementById("output").textContent = "Status: " + msg;
+    }
+
+    function loadGeoJSONFromFile(file, callback) {
+      if (!file) return callback(null);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          callback(JSON.parse(e.target.result));
+        } catch {
+          setStatus("Error parsing GeoJSON file.");
+          callback(null);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function addGeoJSONLayer(geojson, style, oldLayer) {
+      if (oldLayer) {
+        map.removeLayer(oldLayer);
+        layerControl.removeLayer(oldLayer);
+      }
+      if (!geojson) return null;
+      const layer = L.geoJSON(geojson, { style }).addTo(map);
+      layerControl.addOverlay(layer, style === style1 ? "GeoJSON 1" : style === style2 ? "GeoJSON 2" : "Result");
+      return layer;
+    }
+
+    document.getElementById("file1").addEventListener("change", (e) => {
+      loadGeoJSONFromFile(e.target.files[0], (geojson) => {
+        geojsonLayer1 = addGeoJSONLayer(geojson, style1, geojsonLayer1);
+        setStatus("GeoJSON 1 loaded.");
+      });
+    });
+
+    document.getElementById("file2").addEventListener("change", (e) => {
+      loadGeoJSONFromFile(e.target.files[0], (geojson) => {
+        geojsonLayer2 = addGeoJSONLayer(geojson, style2, geojsonLayer2);
+        setStatus("GeoJSON 2 loaded.");
+      });
+    });
+
+    document.getElementById("btn-buffer").addEventListener("click", () => {
+      if (!geojsonLayer1) return setStatus("Upload GeoJSON 1 first.");
+      const distance = parseFloat(document.getElementById("buffer-distance").value);
+      if (isNaN(distance) || distance <= 0) return setStatus("Distance must be positive.");
+      try {
+        const buffered = turf.buffer(geojsonLayer1.toGeoJSON(), distance, { units: "meters" });
+        if (resultLayer) {
+          map.removeLayer(resultLayer);
+          layerControl.removeLayer(resultLayer);
+        }
+        resultLayer = L.geoJSON(buffered, { style: styleResult }).addTo(map);
+        layerControl.addOverlay(resultLayer, "Buffer Result");
+        setStatus(`Buffer created (${distance}m).`);
+        document.getElementById("btn-export").disabled = false;
+      } catch {
+        setStatus("Error during buffering.");
+      }
+    });
+
+    document.getElementById("btn-intersect").addEventListener("click", () => {
+      if (!geojsonLayer1 || !geojsonLayer2) return setStatus("Upload both GeoJSON files first.");
+      try {
+        const intersection = turf.intersect(geojsonLayer1.toGeoJSON(), geojsonLayer2.toGeoJSON());
+        if (!intersection) return setStatus("No intersection found.");
+        if (resultLayer) {
+          map.removeLayer(resultLayer);
+          layerControl.removeLayer(resultLayer);
+        }
+        resultLayer = L.geoJSON(intersection, { style: styleResult }).addTo(map);
+        layerControl.addOverlay(resultLayer, "Intersect Result");
+        setStatus("Intersection created.");
+        document.getElementById("btn-export").disabled = false;
+      } catch {
+        setStatus("Error during intersection.");
+      }
+    });
+
+    document.getElementById("btn-clip").addEventListener("click", () => {
+      if (!geojsonLayer1 || !geojsonLayer2) return setStatus("Upload both GeoJSON files first.");
+      try {
+        const clipped = turf.mask(geojsonLayer2.toGeoJSON());
+        const result = turf.difference(geojsonLayer1.toGeoJSON(), clipped);
+        if (!result) return setStatus("No clip result.");
+        if (resultLayer) {
+          map.removeLayer(resultLayer);
+          layerControl.removeLayer(resultLayer);
+        }
+        resultLayer = L.geoJSON(result, { style: styleResult }).addTo(map);
+        layerControl.addOverlay(resultLayer, "Clip Result");
+        setStatus("Clip created.");
+        document.getElementById("btn-export").disabled = false;
+      } catch {
+        setStatus("Error during clipping.");
+      }
+    });
+
+    document.getElementById("btn-spatialjoin").addEventListener("click", () => {
+      if (!geojsonLayer1 || !geojsonLayer2) return setStatus("Upload both GeoJSON files first.");
+      try {
+        const features1 = geojsonLayer1.toGeoJSON().features;
+        const features2 = geojsonLayer2.toGeoJSON().features;
+        const joined = features1.filter(f1 => features2.some(f2 => turf.booleanIntersects(f1, f2)));
+        const result = { type: "FeatureCollection", features: joined };
+        if (resultLayer) {
+          map.removeLayer(resultLayer);
+          layerControl.removeLayer(resultLayer);
+        }
+        resultLayer = L.geoJSON(result, { style: styleResult }).addTo(map);
+        layerControl.addOverlay(resultLayer, "Spatial Join Result");
+        setStatus("Spatial Join created.");
+        document.getElementById("btn-export").disabled = false;
+      } catch {
+        setStatus("Error during spatial join.");
+      }
+    });
+
+    document.getElementById("btn-export").addEventListener("click", () => {
+      if (!resultLayer) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(resultLayer.toGeoJSON()));
+      const dl = document.createElement("a");
+      dl.setAttribute("href", dataStr);
+      dl.setAttribute("download", "result.geojson");
+      dl.click();
+    });
+
+    const hamburgerBtn = document.getElementById("hamburger-btn");
+    const sidebar = document.getElementById("sidebar");
+    const mapContainer = document.getElementById("map-container");
+
+    hamburgerBtn.addEventListener("click", () => {
+      sidebar.classList.toggle("collapsed");
+      mapContainer.classList.toggle("collapsed");
+      setTimeout(() => map.invalidateSize(), 300);
+    });
+
+    let cursorPointLayer = null;
+    const cursorCheckbox = document.getElementById("enable-cursor-point");
+
+    cursorCheckbox.addEventListener("change", () => {
+      if (cursorCheckbox.checked) {
+        map.on("mousemove", onMapMouseMove);
+      } else {
+        map.off("mousemove", onMapMouseMove);
+        if (cursorPointLayer) {
+          map.removeLayer(cursorPointLayer);
+          cursorPointLayer = null;
+        }
+      }
+    });
+
+    function onMapMouseMove(e) {
+      if (cursorPointLayer) {
+        cursorPointLayer.setLatLng(e.latlng);
+      } else {
+        cursorPointLayer = L.circleMarker(e.latlng, {
+          radius: 6,
+          color: "#f59e0b",
+          fillColor: "#fbbf24",
+          fillOpacity: 0.8
+        }).addTo(map);
+      }
+    }
+
+    window.addEventListener("resize", () => map.invalidateSize());
+  </script>
+</body>
+</html>
